@@ -152,7 +152,7 @@ class Payment_types extends BaseController
                 }
             }
 
-            // print_r($this->view['fieldsData']); die;
+            print_r($this->view['fieldsData']); die;
             }
             return view('PaymentType/edit', $this->view);
         }
