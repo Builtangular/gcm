@@ -2,6 +2,7 @@
 
 namespace App\Controllers;
 
+use App\Libraries\Common;
 use App\Models\CityModel;
 use App\Models\UserModel;
 use App\Models\PartyModel;
@@ -23,12 +24,12 @@ use App\Models\BookingDropsModel;
 use App\Models\NotificationModel;
 use App\Models\BookingStatusModel;
 use App\Controllers\BaseController;
-use App\Libraries\Common;
 use App\Models\BookingPickupsModel;
 use App\Models\CustomerBranchModel;
 use App\Models\LoadingReceiptModel;
 use App\Models\BookingExpensesModel;
 use App\Models\ProformaInvoiceModel;
+use App\Models\PurposeOfUpdateModel;
 use App\Models\TripPausedReasonModel;
 use App\Models\BookingVehicleLogModel;
 use App\Models\BookingLoadingDocsModel;
@@ -82,6 +83,7 @@ class Booking extends BaseController
     public $MaterialsModel;
     public $CountryModel;
     public $common;
+    public $PurposeOfUpdateModel;
     public function __construct()
     {
         // date_default_timezone_set("Asia/Kolkata");
@@ -129,6 +131,7 @@ class Booking extends BaseController
         $this->email = \Config\Services::email();
 
         $this->common = new Common();
+        $this->PurposeOfUpdateModel = new PurposeOfUpdateModel();
     }
 
     public function index()
@@ -1632,7 +1635,7 @@ class Booking extends BaseController
                 }
 
                 //update booking status 
-                $this->update_booking_status($booking_id, 10);
+                $this->update_booking_status($booking_id, 10,0,0,isset($data['pod_date']) ? $data['pod_date'] :'');
                 $this->update_PTLBookings($booking_id, 10);
                 $this->session->setFlashdata('success', 'Uploaded pod Successfully');
                 return $this->response->redirect(base_url('booking'));
@@ -1843,9 +1846,9 @@ class Booking extends BaseController
                 // echo '  <pre>';print_r($booking_data);exit; 
                 $this->BModel->update($id, $booking_data);
 
-                //update booking status 
-                $this->update_booking_status($id, 5);
-                $this->update_PTLBookings($id, 5);
+                //update booking status  
+                $this->update_booking_status($id, 5,0,0,$this->request->getPost('loading_date_time'));
+                $this->update_PTLBookings($id, 5,0,0,$this->request->getPost('loading_date_time'));
                 $this->session->setFlashdata('success', "Loading done successfully");
                 return $this->response->redirect(base_url('booking'));
             }
@@ -2043,15 +2046,26 @@ class Booking extends BaseController
 
     function trip_update($id)
     {
-        $this->view['employees'] = $this->EmployeeModel->select('employee.id,employee.name')
-            ->where(['employee.status' => 1])
+        $this->view['purpose_of_updates'] = $this->PurposeOfUpdateModel->select('id,name,is_money_mandatory,is_fuel_mandatory')
+            ->where(['purpose_of_updates.status' => 1])
             ->findall();
-        $this->view['data'] = $this->BookingsTripUpdateModel->select('bookings_trip_updates.*,e.name e_name')
+        $this->view['employees'] = $this->EmployeeModel->select('employee.id,employee.name,releaveing_date')
+            ->where(['employee.status' => 1])
+            ->where("(releaveing_date > '".date('Y-m-d')."' or releaveing_date  is null or (UNIX_TIMESTAMP(releaveing_date) = 0)  )")
+            ->findall();
+        // echo $this->EmployeeModel->getLastQuery().'<pre>';print_r($this->view['employees']); exit;
+    
+        $this->view['data'] = $this->BookingsTripUpdateModel->select('bookings_trip_updates.*,e.name e_name,pou.name pou_name')
             ->join('employee e', 'e.id = bookings_trip_updates.updated_by')
+            ->join('purpose_of_updates pou', 'pou.id = bookings_trip_updates.purpose_of_update_id')
             ->where('bookings_trip_updates.booking_id', $id)
             ->orderBy('id', 'desc')->findAll();
-        // echo '  <pre>';print_r($this->view['data']); exit;
-        if ($this->request->getPost()) {
+        
+        if ($this->request->getPost()) { 
+            $purpose_of_update = $this->PurposeOfUpdateModel->select('id,name,is_money_mandatory,is_fuel_mandatory')
+            ->where(['id'=>$this->request->getPost('purpose_of_update')])
+            ->first();
+            // echo '<pre>';print_r($purpose_of_update); exit;
             $error = $this->validate([
                 'status_date' => [
                     'rules' => 'required',
@@ -2077,9 +2091,9 @@ class Booking extends BaseController
                         'required' => 'The purpose of update field is required'
                     ],
                 ],
-            ]);
-
-            if ($this->request->getPost('purpose_of_update') == 2) {
+            ]); 
+            
+            if ($purpose_of_update['is_fuel_mandatory'] == 1) {
                 $this->validate([
                     'fuel' => [
                         'rules' => 'required',
@@ -2089,7 +2103,7 @@ class Booking extends BaseController
                     ],
                 ]);
             }
-            if (in_array($this->request->getPost('purpose_of_update'), [3, 4, 5, 6, 7])) {
+            if ($purpose_of_update['is_money_mandatory'] == 1) {
                 $this->validate([
                     'money' => [
                         'rules' => 'required',
@@ -2111,7 +2125,7 @@ class Booking extends BaseController
                 $data['status_date'] = $this->request->getPost('status_date');
                 $data['location'] = $this->request->getPost('location');
                 $data['remarks'] = $this->request->getPost('remarks');
-                $data['purpose_of_update'] = $this->request->getPost('purpose_of_update');
+                $data['purpose_of_update_id'] = $this->request->getPost('purpose_of_update');
                 $data['fuel'] = $this->request->getPost('fuel');
                 $data['money'] = $this->request->getPost('money');
                 $this->BookingsTripUpdateModel->insert($data);
