@@ -12,6 +12,9 @@ use App\Models\TaxInvoiceModel;
 use App\Models\ExpenseHeadModel;
 use App\Models\PaymentModeModel;
 use App\Models\PaymentTypeModel;
+use App\Models\EmployeeModel;
+use App\Models\FieldsModel;
+use App\Models\PurposeOfUpdateModel;
 use App\Models\FuelPumpBrandModel;
 use App\Controllers\BaseController;
 use App\Models\BookingExpensesModel;
@@ -33,6 +36,8 @@ class Payments extends BaseController
     public $FuelPumpBrandModel;
     public $DModel;
     public $PaymentModeModel;
+    public $FieldsModel;
+    public $EmployeeModel;
     
     public function __construct()
     { 
@@ -44,6 +49,8 @@ class Payments extends BaseController
       $this->CModel = new CustomersModel();
       $this->added_by = isset($_SESSION['id']) ? $_SESSION['id'] : '0'; 
       $this->PaymentTypeModel = new PaymentTypeModel();
+      $this->EmployeeModel = new EmployeeModel();
+      $this->FieldsModel = new FieldsModel();
       $this->PaymentModel = new PaymentModel();
       $this->VehicleModel = new VehicleModel();
       $this->FuelPumpBrandModel = new FuelPumpBrandModel();
@@ -74,13 +81,94 @@ class Payments extends BaseController
         ->where(['b.status >=' => 3,'b.status < '=>11])
         ->groupBy('v.id,driver.id')
         ->orderBy('party.party_name', 'asc')
+        ->findAll(); /* to get drivers list */
+        /* Payment Types from master table */
+        $this->view['payment_types']  = $this->PaymentTypeModel->findAll(); 
+        $this->view['authorized_employee']  = $this->EmployeeModel->select('id, name')->where(['payment_authority'=>1])->findAll(); 
+        $PurposeOfUpdateModel = new PurposeOfUpdateModel();
+        $this->view['purpose_update']  = $PurposeOfUpdateModel->select('id, name')->where(['status'=>1])->findAll(); 
+        // echo 'purpose_update<pre>';print_r($this->view['purpose_update']); exit;
+        if($this->request->getPost()){
+            $error = $this->validate([ 
+                'amount' => [
+                    'rules' => 'required',
+                    'errors' => [
+                        'required' => 'The amount field is required'
+                    ],
+                ],
+            ]);
+
+            if($this->request->getPost('payment_for') == 'driver'){
+                $this->validate([
+                    'driver_id' => [
+                        'rules' => 'required',
+                        'errors' => [
+                            'required' => 'The driver field is required'
+                        ],
+                    ],
+                    'payment_type' => [
+                        'rules' => 'required',
+                        'errors' => [
+                            'required' => 'The payment type field is required'
+                        ],
+                    ], 
+                    'authorized_employee' => [
+                        'rules' => 'required',
+                        'errors' => [
+                            'required' => 'The authorized employee is required'
+                        ],
+                    ], 
+                    'escalation_employee' => [
+                        'rules' => 'required',
+                        'errors' => [
+                            'required' => 'The escalation employee is required'
+                        ],
+                    ], 
+                ]);
+                $payment_type_id = $this->request->getPost('payment_type');
+            }
+            $validation = \Config\Services::validation();
+            // echo 'getErrors<pre>';print_r($validation->getErrors()); //exit;
+            if (!empty($validation->getErrors())) {
+                $this->view['error'] = $this->validator;
+            } else {  
+              $data['vehicle_id'] = ($this->request->getVar('vehicle_id')) ? $this->request->getVar('vehicle_id') : 0;
+              $data['driver_id'] = ($this->request->getVar('driver_id')) ? $this->request->getVar('driver_id') : '';
+              $data['km_reading'] = ($this->request->getVar('km_reading')) ? $this->request->getVar('km_reading') : '';
+              $data['quantity'] = ($this->request->getVar('quantity')) ? $this->request->getVar('quantity') : '';
+              $data['vendor_id'] = ($this->request->getVar('vendor_id')) ? $this->request->getVar('vendor_id') : '';
+              $data['amount'] = ($this->request->getVar('amount')) ? $this->request->getVar('amount') : '';
+              $data['payment_type_id'] = $payment_type_id;
+              $data['reason_id'] = ($this->request->getVar('booking_no')) ? $this->request->getVar('booking_no') : ''; 
+              $data['payment_for'] = $this->request->getVar('payment_for');
+              $data['purpose_update_id'] = $this->request->getVar('purpose_update');
+              $data['authorized_employee_id'] = $this->request->getVar('authorized_employee');
+              $data['escalation_employee_id'] = $this->request->getVar('escalation_employee');
+              $data['created_by'] =  $this->added_by;
+              $this->PaymentModel->save($data); 
+              $this->session->setFlashdata('success', 'Payment Added Successfully');
+              return $this->response->redirect(base_url('/payments'));
+            }
+        }
+        return view('Payment/form', $this->view); 
+    }
+
+    function create_bk(){
+        $this->view['drivers'] = $this->DModel->select('driver.*,v.rc_number, party.party_name as driver_name,b.id b_id,b.booking_number')  
+        ->join('party', 'party.id = driver.party_id') 
+        ->join('driver_vehicle_map dvm', 'dvm.driver_id = driver.id and (dvm.unassign_date="" or dvm.unassign_date IS NULL or UNIX_TIMESTAMP(dvm.unassign_date) = 0)')
+        ->join('vehicle v', 'dvm.vehicle_id = v.id')
+        ->join('booking_vehicle_logs bvl', 'bvl.vehicle_id = v.id  and (bvl.unassign_date IS NULL or UNIX_TIMESTAMP(bvl.unassign_date) = 0)')
+        ->join('bookings b', 'bvl.booking_id = b.id')
+        ->where(['b.status >=' => 3,'b.status < '=>11])
+        ->groupBy('v.id,driver.id')
+        ->orderBy('party.party_name', 'asc')
         ->findAll();
-        
-        // echo $this->DModel->getLastQuery().'<pre>';print_r($this->view['drivers']); exit;
 
         $this->view['fuel_pump_brands']  = $this->FuelPumpBrandModel->where('status',1)->findAll(); 
         $this->view['payment_types']  = $this->PaymentTypeModel->findAll(); 
-        
+        $this->view['authorized_employee']  = $this->EmployeeModel->select('id, name')->where(['payment_authority'=>1])->findAll(); 
+        // var_dump($this->view['authorized_employee']); die;
         //get vendors
         $this->view['vendors'] = $this->CModel
         ->select('customer.id,p.party_name')
@@ -92,7 +180,8 @@ class Payments extends BaseController
         $payment_type_id = isset($paymentTypeM['id']) ? $paymentTypeM['id'] : 0;
         
         $this->view['money_payment_type_id'] = $payment_type_id;
-
+        // var_dump($_POST); die;
+        // $this->view['payment_types'] = $this->PaymentTypeModel->findAll(); 
         $this->view['payment_modes'] = $this->PaymentModeModel->findAll(); 
         // echo $this->PaymentModeModel->getLastQuery().'<pre>';print_r($this->view['payment_modes']); exit;
         if($this->request->getPost()){
@@ -103,12 +192,12 @@ class Payments extends BaseController
                         'required' => 'The amount field is required'
                     ],
                 ],
-                'payment_mode' => [
+                /* 'payment_mode' => [
                     'rules' => 'required',
                     'errors' => [
                         'required' => 'The payment mode field is required'
                     ],
-                ], 
+                ],  */
             ]);
             if($this->request->getPost('payment_for') == 'driver'){
                 $this->validate([
@@ -118,17 +207,17 @@ class Payments extends BaseController
                             'required' => 'The driver field is required'
                         ],
                     ],
-                    'payment_type_id' => [
+                    'payment_type' => [
                         'rules' => 'required',
                         'errors' => [
                             'required' => 'The payment type field is required'
                         ],
                     ], 
                 ]);
-                $payment_type_id = $this->request->getPost('payment_type_id');
+                $payment_type_id = $this->request->getPost('payment_type');
             } 
 
-            if($this->request->getPost('payment_type_id') == 1){
+            if($this->request->getPost('payment_type') == 1){
                 $this->validate([
                     'fuel_fill_type' => [
                         'rules' => 'required',
@@ -139,7 +228,7 @@ class Payments extends BaseController
                 ]);
             }
 
-            if($this->request->getPost('payment_type_id') == 2){
+            if($this->request->getPost('payment_type') == 2){
                 $this->validate([
                     'vendor_id' => [
                         'rules' => 'required',
@@ -150,9 +239,9 @@ class Payments extends BaseController
                 ]);
             }
 
-            if($this->request->getPost('payment_type_id') == 1 || $this->request->getPost('payment_type_id') == 2){
+            if($this->request->getPost('payment_type') == 1 || $this->request->getPost('payment_type') == 2){
                 $this->validate([
-                    'vehicle_id' => [
+                    'vehicle' => [
                         'rules' => 'required',
                         'errors' => [
                             'required' => 'The vehicle field is required'
@@ -201,7 +290,7 @@ class Payments extends BaseController
                 ]);
             }
 
-            if($this->request->getPost('payment_mode') == 1){
+            /* if($this->request->getPost('payment_mode') == 1){
                 $this->validate([
                     'card_no' => [
                         'rules' => 'required',
@@ -232,7 +321,7 @@ class Payments extends BaseController
                         ],
                     ],
                 ]);
-            }
+            } */
             $validation = \Config\Services::validation();
             // echo 'POst dt<pre>';print_r($this->request->getPost());
             // echo 'getErrors<pre>';print_r($validation->getErrors()); //exit;
@@ -254,8 +343,10 @@ class Payments extends BaseController
               $data['upi_no'] = $this->request->getVar('upi_no');
               $data['account_no'] = $this->request->getVar('account_no');
               $data['transaction_no'] = $this->request->getVar('transaction_no');
-              $data['reason_id'] = ($this->request->getVar('reason_id')) ? $this->request->getVar('reason_id') : ''; 
+              $data['reason_id'] = ($this->request->getVar('booking_no')) ? $this->request->getVar('booking_no') : ''; 
               $data['payment_for'] = $this->request->getVar('payment_for');
+              $data['authorized_employee_id'] = $this->request->getVar('authorized_employee_id');
+              $data['escalation_employee_id'] = $this->request->getVar('escalation_employee_id');
               $data['created_by'] =  $this->added_by;
               
             //   echo 'data<pre>';print_r($data);exit;
@@ -298,4 +389,21 @@ class Payments extends BaseController
         ->findAll();
         echo json_encode($bookings);exit;
     }
+
+    /* Monika's Work */
+    function getPaymentTypeFields(){
+        $paymentTypeFields = $this->FieldsModel->select('fields.id,fields.name,fields.status,pmtf.mandatory')   
+        ->join('payment_type_fields pmtf', 'pmtf.field_id = fields.id')
+        ->where(['fields.status' =>'Active', 'pmtf.payment_type_id' =>  $this->request->getVar('payment_type_id')])  
+        ->findAll(); 
+        echo json_encode($paymentTypeFields);exit;
+    }
+    function getEscalationEmployees(){
+        $employeeList =$this->EmployeeModel->select('id, name')
+        ->where(['payment_authority'=>1, 'id !=' => $this->request->getVar('auth_emp_id')])
+        ->findAll(); 
+        // echo $this->EmployeeModel->getLastQuery().'<pre>';print_r($employeeList); exit;
+        echo json_encode($employeeList);exit;
+    }
+    /* ./ Monika's Work */
 }

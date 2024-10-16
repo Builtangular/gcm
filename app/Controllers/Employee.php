@@ -698,7 +698,8 @@ class Employee extends BaseController
   {
     $this->view['token'] = $id;
     $this->view['last_emp_dept_data'] = $this->EmployeeDepartmentModel->where(['employee_id' => $id])->orderBy('id', 'DESC')->first();
-    //  echo ' last_emp_dept_data <pre>';print_r($this->view['last_emp_dept_data']);exit;
+    $this->view['emp_data'] = $this->employeeModel->where(['id' => $id])->first();
+    //  echo ' emp_data <pre>';print_r($this->view['emp_data']);exit;
     if ($this->request->getPost()) {
       $error = $this->validate([
         'department_id' => 'required',
@@ -707,7 +708,7 @@ class Employee extends BaseController
       if (!$error) {
         $this->view['error'] = $this->validator;
       } else {
-        // echo '<pre>';print_r($this->request->getPost());
+        // echo '<pre>';print_r($this->request->getPost());die;
         // echo ' last_emp_dept_data <pre>';print_r($this->view['last_emp_dept_data']);
 
         if (!empty($this->view['last_emp_dept_data'])) {
@@ -724,9 +725,9 @@ class Employee extends BaseController
         $data['created_by'] = $this->added_by;
         $this->EmployeeDepartmentModel->insert($data);
 
-        // echo ' data <pre>';print_r($data);exit; 
+        // echo ' data <pre>';print_r($this->request->getPost('payment_authority'));exit; 
         //change employee status
-        $this->employeeModel->update($id, ['status' => 0, 'approved' => 0,'dept_id'=>$this->request->getPost('department_id')]);
+        $this->employeeModel->update($id, ['status' => 0, 'approved' => 0,'dept_id'=>$this->request->getPost('department_id'),'payment_authority'=>$this->request->getPost('payment_authority')]);
         $this->session->setFlashdata('success', 'Employee Department Assigned Successfully');
         return $this->response->redirect(base_url('employee'));
       }

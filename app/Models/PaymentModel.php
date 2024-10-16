@@ -23,13 +23,16 @@ class PaymentModel extends Model
         'vendor_id',
         'amount',
         'payment_type_id',
-        'payment_mode',
-        'card_no',
+        // 'payment_mode',
+       /*  'card_no',
         'upi_no',
         'account_no',
-        'transaction_no',
+        'transaction_no', */
         'reason_id',
         'payment_for',
+        'purpose_update_id',
+        'authorized_employee_id',
+        'escalation_employee_id',
         'created_by',
         'updated_by'
     ];
